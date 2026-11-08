@@ -1,0 +1,10 @@
+{
+  "id": "threads-chatgpt-import",
+  "name": "ChatGPT Import",
+  "version": "0.1.0",
+  "minAppVersion": "1.7.2",
+  "description": "Import ChatGPT data exports into your vault as Markdown notes.",
+  "author": "Rick Bowman",
+  "authorUrl": "https://github.com/rbcodelabs",
+  "isDesktopOnly": true
+}

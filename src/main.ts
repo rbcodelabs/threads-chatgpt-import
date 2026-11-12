@@ -10,6 +10,8 @@ export const CONTINUE_COMMAND_ID = 'continue-in-agent-threads';
 
 export default class ThreadsChatGptImportPlugin extends Plugin {
   settings: ImportSettings = { ...DEFAULT_SETTINGS };
+  /** The one import dialog that may exist; two concurrent imports would race on the same vault. */
+  private modal: ImportModal | undefined;
 
   async onload(): Promise<void> {
     this.settings = normalizeSettings(await this.loadData());
@@ -18,7 +20,7 @@ export default class ThreadsChatGptImportPlugin extends Plugin {
     this.addCommand({
       id: IMPORT_COMMAND_ID,
       name: 'Import ChatGPT export…',
-      callback: () => new ImportModal(this.app, this.settings).open(),
+      callback: () => this.openImport(),
     });
 
     this.addCommand({
@@ -35,6 +37,21 @@ export default class ThreadsChatGptImportPlugin extends Plugin {
     });
   }
 
+  onunload(): void {
+    // Closing aborts a running scan/import and releases the archive and any temp copy of the ZIP.
+    this.modal?.close();
+    this.modal = undefined;
+  }
+
+  private openImport(): void {
+    if (this.modal?.isOpen) {
+      new Notice('An import is already open. Finish or close it before starting another.');
+      return;
+    }
+    this.modal = new ImportModal(this.app, this.settings);
+    this.modal.open();
+  }
+
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
   }
@@ -49,7 +66,7 @@ export default class ThreadsChatGptImportPlugin extends Plugin {
   private async continueInAgentThreads(file: TFile): Promise<void> {
     const api = getAgentThreadsApi(this.app);
     if (!api) {
-      new Notice('Continue in Agent Threads needs the Agent Threads plugin. Install and enable it, then try again.');
+      new Notice('Continue in Agent Threads needs a current version of the Agent Threads plugin. Install or update it and make sure it is enabled, then try again.');
       return;
     }
     try {

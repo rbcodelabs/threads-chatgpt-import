@@ -15,6 +15,18 @@ type Stage = 'setup' | 'scanning' | 'preview' | 'importing' | 'done';
 
 const MAX_LISTED = 50;
 
+/** Everything the modal reaches outside itself for; injectable so the stage machine is testable. */
+export interface ModalDeps {
+  resolveZipFile: typeof resolveZipFile;
+  snapshotVault: typeof snapshotVault;
+  prepareImport: typeof prepareImport;
+  runImport: typeof runImport;
+  disposePrepared: typeof disposePrepared;
+  createVaultPort: typeof createVaultPort;
+}
+
+const REAL_DEPS: ModalDeps = { resolveZipFile, snapshotVault, prepareImport, runImport, disposePrepared, createVaultPort };
+
 /**
  * Three screens: choose ZIP + options, dry-run preview, progress/summary. The vault is only
  * written by the Import button (`runImport`); everything before that is read-only.
@@ -28,24 +40,44 @@ export class ImportModal extends Modal {
   private abort: AbortController | undefined;
   private folderError = '';
   private error = '';
+  private opened = false;
+  private closed = false;
+  /** The scan or import currently running. The ZIP must outlive it: closing only aborts it. */
+  private inflight: Promise<void> | undefined;
+  private readonly deps: ModalDeps;
 
-  constructor(app: App, defaults: ImportSettings) {
+  constructor(app: App, defaults: ImportSettings, deps: Partial<ModalDeps> = {}) {
     super(app);
     this.settings = { ...defaults };
+    this.deps = { ...REAL_DEPS, ...deps };
   }
 
+  /** True from open until close; the plugin uses it to allow only one import at a time. */
+  get isOpen(): boolean { return this.opened && !this.closed; }
+
   onOpen(): void {
+    this.opened = true;
+    this.closed = false;
     this.modalEl.addClass('threads-chatgpt-import');
     this.titleEl.setText('Import ChatGPT export');
     this.render();
   }
 
   onClose(): void {
+    this.closed = true;
     this.abort?.abort();
-    if (this.prepared && this.stage !== 'importing') disposePrepared(this.prepared);
+    // While importing, runImport owns the archive and closes it itself.
+    if (this.prepared && this.stage !== 'importing') this.deps.disposePrepared(this.prepared);
     this.prepared = undefined;
-    void this.zip?.cleanup();
+    const zip = this.zip;
     this.zip = undefined;
+    if (zip) {
+      // A running scan/import still has the file open (and a temp copy must not vanish under it):
+      // delete only once it has settled.
+      const cleanup = (): void => { void zip.cleanup().catch(() => { /* best effort */ }); };
+      if (this.inflight) void this.inflight.then(cleanup, cleanup);
+      else cleanup();
+    }
     this.contentEl.empty();
   }
 
@@ -123,27 +155,45 @@ export class ImportModal extends Modal {
     this.error = '';
     try {
       await this.zip?.cleanup();
-      this.zip = await resolveZipFile(file);
+      this.zip = undefined;
+      const resolved = await this.deps.resolveZipFile(file);
+      if (this.closed) { await resolved.cleanup(); return; } // the modal went away while the copy was running
+      this.zip = resolved;
       this.zipName = file.name;
     } catch (e) {
       this.zip = undefined;
       this.zipName = '';
       this.error = `Could not read that file: ${(e as Error).message}`;
     }
-    this.render();
+    if (!this.closed) this.render();
   }
 
-  private async scan(): Promise<void> {
-    if (!this.zip || this.folderError) return;
+  private scan(): Promise<void> {
+    if (this.stage !== 'setup' || !this.zip || this.folderError) return Promise.resolve();
+    const run = this.runScan(this.zip);
+    this.inflight = run;
+    return run;
+  }
+
+  private async runScan(zip: ResolvedZip): Promise<void> {
     this.error = '';
     this.settings.folder = validateFolder(this.settings.folder);
-    this.abort = new AbortController();
+    const abort = new AbortController();
+    this.abort = abort;
     this.go('scanning');
     try {
-      const snapshot = await snapshotVault(this.app, this.settings.folder);
-      this.prepared = await prepareImport(this.zip.path, this.settings, snapshot, { signal: this.abort.signal });
+      const snapshot = await this.deps.snapshotVault(this.app, this.settings.folder);
+      const prepared = await this.deps.prepareImport(zip.path, this.settings, snapshot, { signal: abort.signal });
+      if (abort.signal.aborted || this.closed) {
+        // Cancelled (or closed) while the export was being read: nobody will use this, so close its file handle.
+        this.deps.disposePrepared(prepared);
+        if (!this.closed) this.go('setup');
+        return;
+      }
+      this.prepared = prepared;
       this.go('preview');
     } catch (e) {
+      if (this.closed) return;
       this.error = (e as Error).message === 'cancelled' ? '' : `Could not read the export: ${(e as Error).message}`;
       this.go('setup');
     }
@@ -186,7 +236,7 @@ export class ImportModal extends Modal {
 
     const importable = p.create + p.update;
     new Setting(el)
-      .addButton(b => b.setButtonText('Back').onClick(() => { disposePrepared(prepared); this.prepared = undefined; this.go('setup'); }))
+      .addButton(b => b.setButtonText('Back').onClick(() => { this.deps.disposePrepared(prepared); this.prepared = undefined; this.go('setup'); }))
       .addButton(b => b.setButtonText(importable ? `Import ${importable} note${importable === 1 ? '' : 's'}` : 'Nothing to import')
         .setCta().setDisabled(importable === 0).onClick(() => { void this.start(); }));
   }
@@ -212,15 +262,21 @@ export class ImportModal extends Modal {
     new Setting(this.contentEl).addButton(b => b.setButtonText('Cancel').onClick(() => { this.abort?.abort(); b.setDisabled(true); }));
   }
 
-  private async start(): Promise<void> {
-    const prepared = this.prepared;
-    if (!prepared) return;
-    this.abort = new AbortController();
+  private start(): Promise<void> {
+    if (this.stage !== 'preview' || !this.prepared) return Promise.resolve();
+    const run = this.runImportNow(this.prepared);
+    this.inflight = run;
+    return run;
+  }
+
+  private async runImportNow(prepared: Prepared): Promise<void> {
+    const abort = new AbortController();
+    this.abort = abort;
     this.go('importing');
     let result: WriteResult | undefined;
     try {
-      result = await runImport(prepared, createVaultPort(this.app), {
-        signal: this.abort.signal,
+      result = await this.deps.runImport(prepared, this.deps.createVaultPort(this.app), {
+        signal: abort.signal,
         onProgress: ({ done, total, path }) => {
           this.bar?.setAttribute('value', String(total ? done / total : 1));
           this.label?.setText(`${done} / ${total}  ${path}`);
@@ -230,6 +286,7 @@ export class ImportModal extends Modal {
       this.error = `Import stopped: ${(e as Error).message}`;
     }
     this.prepared = undefined; // runImport closed the archive
+    if (this.closed) return; // the modal is gone; the run was aborted by onClose and has nothing to show
     this.stage = 'done';
     this.renderDone(result);
   }

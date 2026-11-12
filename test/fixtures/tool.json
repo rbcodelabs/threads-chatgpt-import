@@ -1,0 +1,35 @@
+{
+  "id": "conv-tool-0005",
+  "title": "Latest Node release",
+  "create_time": 1700400000,
+  "update_time": 1700400100,
+  "current_node": "a1",
+  "mapping": {
+    "root": { "id": "root", "message": null, "parent": null, "children": ["u1"] },
+    "u1": {
+      "id": "u1", "parent": "root", "children": ["t1"],
+      "message": { "id": "u1", "author": { "role": "user" }, "create_time": 1700400010,
+        "content": { "content_type": "text", "parts": ["What is the latest Node release?"] }, "metadata": {} }
+    },
+    "t1": {
+      "id": "t1", "parent": "u1", "children": ["x1"],
+      "message": { "id": "t1", "author": { "role": "tool", "name": "browser" }, "create_time": 1700400015,
+        "content": { "content_type": "tether_browsing_display", "result": "", "summary": "" }, "metadata": {} }
+    },
+    "x1": {
+      "id": "x1", "parent": "t1", "children": ["o1"],
+      "message": { "id": "x1", "author": { "role": "tool", "name": "python" }, "create_time": 1700400016,
+        "content": { "content_type": "execution_output", "text": "v22.1.0" }, "metadata": {} }
+    },
+    "o1": {
+      "id": "o1", "parent": "x1", "children": ["a1"],
+      "message": { "id": "o1", "author": { "role": "tool", "name": "weird" }, "create_time": 1700400017,
+        "content": { "content_type": "hologram_v9", "payload": 1 }, "metadata": {} }
+    },
+    "a1": {
+      "id": "a1", "parent": "o1", "children": [],
+      "message": { "id": "a1", "author": { "role": "assistant" }, "create_time": 1700400020,
+        "content": { "content_type": "text", "parts": ["Node 22.1.0."] }, "metadata": { "model_slug": "gpt-4o" } }
+    }
+  }
+}

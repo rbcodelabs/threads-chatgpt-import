@@ -1,0 +1,26 @@
+{
+  "id": "conv-code-0002",
+  "title": "Reverse a string: \"quick\" fix\nwith --- injection",
+  "create_time": 1700100000,
+  "update_time": 1700100100,
+  "current_node": "a1",
+  "mapping": {
+    "root": { "id": "root", "message": null, "parent": null, "children": ["u1"] },
+    "u1": {
+      "id": "u1", "parent": "root", "children": ["c1"],
+      "message": { "id": "u1", "author": { "role": "user" }, "create_time": 1700100010,
+        "content": { "content_type": "text", "parts": ["Write python to reverse a string"] }, "metadata": {} }
+    },
+    "c1": {
+      "id": "c1", "parent": "u1", "children": ["a1"],
+      "message": { "id": "c1", "author": { "role": "assistant" }, "create_time": 1700100015, "recipient": "python",
+        "content": { "content_type": "code", "language": "python", "text": "print('abc'[::-1])" }, "metadata": {} }
+    },
+    "a1": {
+      "id": "a1", "parent": "c1", "children": [],
+      "message": { "id": "a1", "author": { "role": "assistant" }, "create_time": 1700100020,
+        "content": { "content_type": "text", "parts": ["Use slicing:\n\n```python\ns = 'abc'\nprint(s[::-1])\n```\n"] },
+        "metadata": { "model_slug": "gpt-4" } }
+    }
+  }
+}

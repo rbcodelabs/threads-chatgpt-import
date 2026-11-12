@@ -1,0 +1,25 @@
+{
+  "id": "conv-branch-0003",
+  "title": "Haiku about rain",
+  "create_time": 1700200000,
+  "update_time": 1700200200,
+  "current_node": "a2b",
+  "mapping": {
+    "root": { "id": "root", "message": null, "parent": null, "children": ["u1"] },
+    "u1": {
+      "id": "u1", "parent": "root", "children": ["a2a", "a2b"],
+      "message": { "id": "u1", "author": { "role": "user" }, "create_time": 1700200010,
+        "content": { "content_type": "text", "parts": ["Write a haiku about rain"] }, "metadata": {} }
+    },
+    "a2a": {
+      "id": "a2a", "parent": "u1", "children": [],
+      "message": { "id": "a2a", "author": { "role": "assistant" }, "create_time": 1700200020,
+        "content": { "content_type": "text", "parts": ["FIRST DRAFT: Rain falls on the roof"] }, "metadata": { "model_slug": "gpt-4o" } }
+    },
+    "a2b": {
+      "id": "a2b", "parent": "u1", "children": [],
+      "message": { "id": "a2b", "author": { "role": "assistant" }, "create_time": 1700200030,
+        "content": { "content_type": "text", "parts": ["REGENERATED: Soft rain on the leaves"] }, "metadata": { "model_slug": "gpt-4o" } }
+    }
+  }
+}

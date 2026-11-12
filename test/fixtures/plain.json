@@ -1,0 +1,29 @@
+{
+  "id": "conv-plain-0001",
+  "title": "Planning a garden",
+  "create_time": 1700000000.5,
+  "update_time": 1700000300.25,
+  "current_node": "a1",
+  "default_model_slug": "gpt-4o",
+  "some_future_field": { "ignored": true },
+  "mapping": {
+    "root": { "id": "root", "message": null, "parent": null, "children": ["sys"] },
+    "sys": {
+      "id": "sys", "parent": "root", "children": ["u1"],
+      "message": { "id": "sys", "author": { "role": "system" }, "create_time": null,
+        "content": { "content_type": "text", "parts": [""] },
+        "metadata": { "is_visually_hidden_from_conversation": true } }
+    },
+    "u1": {
+      "id": "u1", "parent": "sys", "children": ["a1"],
+      "message": { "id": "u1", "author": { "role": "user" }, "create_time": 1700000010,
+        "content": { "content_type": "text", "parts": ["What vegetables grow well in shade?"] }, "metadata": {} }
+    },
+    "a1": {
+      "id": "a1", "parent": "u1", "children": [],
+      "message": { "id": "a1", "author": { "role": "assistant" }, "create_time": 1700000020,
+        "content": { "content_type": "text", "parts": ["Leafy greens do well: **lettuce**, spinach and kale.\n\n- Chard\n- Arugula citeturn0search0"] },
+        "metadata": { "model_slug": "gpt-4o" } }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+[
+  { "id": "conv-shard-b", "title": "Shard B", "create_time": 1700700000, "update_time": 1700700001, "current_node": "u1",
+    "mapping": { "root": { "id": "root", "message": null, "parent": null, "children": ["u1"] },
+      "u1": { "id": "u1", "parent": "root", "children": [], "message": { "id": "u1", "author": { "role": "user" }, "create_time": 1700700000, "content": { "content_type": "text", "parts": ["hello from shard b"] }, "metadata": {} } } } }
+]

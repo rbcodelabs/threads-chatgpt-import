@@ -1,0 +1,23 @@
+{
+  "id": "conv-image-0004",
+  "title": "Describe this photo",
+  "create_time": 1700300000,
+  "update_time": 1700300100,
+  "current_node": "a1",
+  "mapping": {
+    "root": { "id": "root", "message": null, "parent": null, "children": ["u1"] },
+    "u1": {
+      "id": "u1", "parent": "root", "children": ["a1"],
+      "message": { "id": "u1", "author": { "role": "user" }, "create_time": 1700300010,
+        "content": { "content_type": "multimodal_text", "parts": [
+          { "content_type": "image_asset_pointer", "asset_pointer": "file-service://file-ABC123", "width": 10, "height": 10 },
+          { "content_type": "image_asset_pointer", "asset_pointer": "file-service://file-MISSING9", "width": 10, "height": 10 },
+          "What is in this picture?" ] }, "metadata": {} }
+    },
+    "a1": {
+      "id": "a1", "parent": "u1", "children": [],
+      "message": { "id": "a1", "author": { "role": "assistant" }, "create_time": 1700300020,
+        "content": { "content_type": "text", "parts": ["A red square."] }, "metadata": { "model_slug": "gpt-4o" } }
+    }
+  }
+}

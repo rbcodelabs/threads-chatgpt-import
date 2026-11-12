@@ -1,0 +1,15 @@
+{
+  "id": "conv-empty-0006",
+  "title": null,
+  "create_time": 1700500000,
+  "update_time": 1700500000,
+  "current_node": "sys",
+  "mapping": {
+    "root": { "id": "root", "message": null, "parent": null, "children": ["sys"] },
+    "sys": {
+      "id": "sys", "parent": "root", "children": [],
+      "message": { "id": "sys", "author": { "role": "system" }, "create_time": null,
+        "content": { "content_type": "text", "parts": [""] }, "metadata": { "is_visually_hidden_from_conversation": true } }
+    }
+  }
+}

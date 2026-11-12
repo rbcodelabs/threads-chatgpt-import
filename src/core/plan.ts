@@ -31,7 +31,7 @@ export function pathKey(path: string): string {
   return path.normalize('NFC').toLowerCase().normalize('NFC');
 }
 
-function withIdSuffix(path: string, id: string, taken: Set<string>): string {
+export function withIdSuffix(path: string, id: string, taken: Set<string>): string {
   const slash = path.lastIndexOf('/');
   const dir = path.slice(0, slash + 1);
   const file = path.slice(slash + 1);

@@ -8,6 +8,8 @@ export interface MarkdownOptions {
   folder?: string;
   /** Render non-active branches (edits/regenerations) in collapsed <details>. Default false. */
   includeBranches?: boolean;
+  /** Put notes in `<folder>/YYYY-MM/` by creation month (`undated` when unknown). Attachments stay in `<folder>/attachments/`. */
+  groupByMonth?: boolean;
   /** Tool messages: fold into `> [!note]-` callouts (default) or drop. */
   toolMessages?: 'callout' | 'drop';
   /** Maps an image asset pointer to the ZIP entry that holds it (see ParsedExport.resolveAsset). */
@@ -260,8 +262,9 @@ export function toMarkdown(conv: Conversation, options: MarkdownOptions = {}): R
   const content = `---\n${[...frontLines, `${HASH_KEY}: ${yamlString(hash)}`].join('\n')}\n---\n\n${body}`;
 
   const datePrefix = (created ?? updated)?.slice(0, 10) ?? 'undated';
+  const noteFolder = options.groupByMonth ? inFolder(folder, datePrefix === 'undated' ? datePrefix : datePrefix.slice(0, 7)) : folder;
   return {
-    path: inFolder(folder, fitFileName(`${datePrefix} ${sanitizeFileName(title)}`, '', '.md')),
+    path: inFolder(noteFolder, fitFileName(`${datePrefix} ${sanitizeFileName(title)}`, '', '.md')),
     content,
     chatgptId: conv.id,
     hash,

@@ -203,6 +203,8 @@ export interface ParsedExport {
   conversations(): AsyncGenerator<Conversation>;
   /** Maps an asset pointer (e.g. `file-service://file-ABC`) to the ZIP entry that holds it. */
   resolveAsset(pointer: string): string | undefined;
+  /** Uncompressed size of an entry in bytes, or undefined if there is no such entry. */
+  entrySize(name: string): number | undefined;
   /** Buffers an entry; rejects over `maxBytes` (default 256 MiB) using the declared size first. */
   readEntry(name: string, opts?: ReadOptions): Promise<Buffer>;
   /** Streams an entry (attachments), enforcing `maxBytes` on the bytes actually produced. */
@@ -285,6 +287,7 @@ export async function parseExport(zipPath: string): Promise<ParsedExport> {
     report,
     conversations,
     resolveAsset: pointer => assets.get(pointer.replace(/^[a-z-]+:\/\//i, '')),
+    entrySize: name => zip.size(name),
     readEntry: (name, opts) => zip.read(name, opts),
     openEntryStream: (name, opts) => zip.openReadStream(name, opts),
     copyEntryTo: (name, dest, opts) => zip.copyTo(name, dest, opts),

@@ -16,9 +16,11 @@ for large accounts), plus image/file attachments next to it.
 
 ## Install (Geode)
 
-Build, then copy `main.js`, `manifest.json` and `styles.css` to `<vault>/.geode/plugins/threads-chatgpt-import/` and
-enable the plugin in `<vault>/.geode/plugins.json`. For Obsidian, use
-`<vault>/.obsidian/plugins/threads-chatgpt-import/`.
+Download `main.js`, `manifest.json` and `styles.css` from the latest GitHub release (the repository is private, so
+use `gh release download --repo rbcodelabs/threads-chatgpt-import --dir <vault>/.geode/plugins/threads-chatgpt-import`),
+then enable the plugin in `<vault>/.geode/plugins.json` or in Settings > Community plugins. For Obsidian, use
+`<vault>/.obsidian/plugins/threads-chatgpt-import/`. To build from source instead:
+`npm install --legacy-peer-deps && npm run build`.
 
 ## Use
 

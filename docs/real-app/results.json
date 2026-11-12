@@ -1,0 +1,251 @@
+[
+  {
+    "step": "1 commands registered",
+    "ok": true,
+    "evidence": {
+      "matching": [
+        "Onboarding: Install Agent Threads",
+        "ChatGPT Import: Import ChatGPT export…",
+        "ChatGPT Import: Continue in Agent Threads"
+      ]
+    }
+  },
+  {
+    "step": "1 plugin enabled in registry",
+    "ok": true,
+    "evidence": "app.plugins.plugins has threads-chatgpt-import"
+  },
+  {
+    "step": "2 command found in palette via UI",
+    "ok": true,
+    "evidence": [
+      "ChatGPT Import: Import ChatGPT export…"
+    ]
+  },
+  {
+    "step": "2 nothing written before Import",
+    "ok": true,
+    "evidence": {
+      "before": 1,
+      "afterPreview": 1
+    }
+  },
+  {
+    "step": "2 preview counts",
+    "ok": true,
+    "evidence": [
+      "Conversations found\t8",
+      "New notes\t8",
+      "Attachments to copy\t1 (75 B)"
+    ]
+  },
+  {
+    "step": "2 summary says Created N matching md files",
+    "ok": true,
+    "evidence": {
+      "summary": {
+        "Created": "Created 8, updated 0",
+        "Skipped": "Skipped 0 unchanged and 0 you had edited",
+        "Attachments": "Attachments: 1 copied, 0 reused"
+      },
+      "mdOnDisk": 8
+    }
+  },
+  {
+    "step": "2 attachment exists and is a valid PNG",
+    "ok": true,
+    "evidence": [
+      "ChatGPT/attachments/file-ABC123-pic.png"
+    ]
+  },
+  {
+    "step": "2 image note embeds the attachment",
+    "ok": true,
+    "evidence": "---\ntitle: \"Describe this photo\"\nsource: chatgpt\nchatgpt_id: \"conv-image-0004\"\nmodel: \"gpt-4o\"\ncreated: \"2023-11-18T09:33:20.000Z\"\nupdated: \"2023-11-18T09:35:00.000Z\"\ntags: [chatgpt]\nchatgpt_import_hash: \"6c52cf206135893b34193bbd6f92dd78325a4439e5413c71ccb36d2a88df4f4b\"\n---\n\n## You\n\n![[attachments/file-ABC123-pic.png]]\n\n> [!note] Image not found in export: file-MISSING9\n\nWhat is in this picture?\n\n## ChatGPT\n\nA red square.\n"
+  },
+  {
+    "step": "2 frontmatter present",
+    "ok": true,
+    "evidence": "---\ntitle: \"Planning a garden\"\nsource: chatgpt\nchatgpt_id: \"conv-plain-0001\"\nmodel: \"gpt-4o\"\ncreated: \"2023-11-14T22:13:20.500Z\"\nupdated: \"2023-11-14T22:18:20.250Z\"\ntags: [chatgpt]\nchatgpt_import_hash: \"615ea3958f047ac305be5ec3e423da848484a6a97cfa57d22be9011782e7e148\"\n---\n\n## You\n\nWhat vegetables grow well in shade?\n\n## ChatGPT\n\nLeafy greens do well: **lettuce**, spinach and kale.\n\n- Chard\n- Arugu"
+  },
+  {
+    "step": "3 case-colliding titles produce two distinct files",
+    "ok": true,
+    "evidence": [
+      "ChatGPT/2023-11-24 Case Title.md",
+      "ChatGPT/2023-11-24 case title (caseb).md"
+    ]
+  },
+  {
+    "step": "2 empty conversation handled (no crash; see counts)",
+    "ok": true,
+    "evidence": {
+      "mdNames": [
+        "ChatGPT/2023-11-14 Planning a garden.md",
+        "ChatGPT/2023-11-16 Reverse a string quick fix with --- injection.md",
+        "ChatGPT/2023-11-17 Haiku about rain.md",
+        "ChatGPT/2023-11-18 Describe this photo.md",
+        "ChatGPT/2023-11-19 Latest Node release.md",
+        "ChatGPT/2023-11-20 Untitled.md",
+        "ChatGPT/2023-11-24 Case Title.md",
+        "ChatGPT/2023-11-24 case title (caseb).md"
+      ]
+    }
+  },
+  {
+    "step": "3 re-import: nothing new/updated, all skipped unchanged",
+    "ok": true,
+    "evidence": [
+      "New notes\t0",
+      "Notes to update\t0",
+      "Skipped, already imported\t8",
+      "Skipped, you edited them\t0"
+    ]
+  },
+  {
+    "step": "3 re-import preview offers \"Nothing to import\"",
+    "ok": true,
+    "evidence": "button label"
+  },
+  {
+    "step": "3 re-import (preview only) wrote nothing",
+    "ok": true,
+    "evidence": "file list identical"
+  },
+  {
+    "step": "3 changed ZIP preview: 1 update (code), 1 skipped-modified (edited plain)",
+    "ok": true,
+    "evidence": [
+      "New notes\t0",
+      "Notes to update\t1",
+      "Skipped, already imported\t6",
+      "Skipped, you edited them\t1"
+    ]
+  },
+  {
+    "step": "3 edited note NOT overwritten",
+    "ok": true,
+    "evidence": {
+      "hasMyEdit": true,
+      "hasUpstream": false
+    }
+  },
+  {
+    "step": "3 unedited changed note WAS updated",
+    "ok": true,
+    "evidence": "ChatGPT/2023-11-16 Reverse a string quick fix with --- injection.md"
+  },
+  {
+    "step": "4 bulk preview",
+    "ok": true,
+    "evidence": [
+      "Conversations found\t1500",
+      "New notes\t1500"
+    ]
+  },
+  {
+    "step": "4 bulk preview wrote nothing",
+    "ok": true,
+    "evidence": 0
+  },
+  {
+    "step": "4 summary says cancelled",
+    "ok": true,
+    "evidence": [
+      "Import ChatGPT export",
+      "Import cancelled",
+      "Created 43, updated 0",
+      "Skipped 0 unchanged and 0 you had edited"
+    ]
+  },
+  {
+    "step": "4 stopped early (partial, not all)",
+    "ok": true,
+    "evidence": {
+      "written": 43,
+      "of": 1500
+    }
+  },
+  {
+    "step": "4 no half-written notes (every note has frontmatter + final message)",
+    "ok": true,
+    "evidence": {
+      "checked": 43,
+      "torn": []
+    }
+  },
+  {
+    "step": "4 no stray temp files",
+    "ok": true,
+    "evidence": []
+  },
+  {
+    "step": "4 summary Created count equals files on disk",
+    "ok": true,
+    "evidence": {
+      "summary": 43,
+      "disk": 43
+    }
+  },
+  {
+    "step": "4 re-run after cancel: only remaining notes are new",
+    "ok": true,
+    "evidence": [
+      "New notes\t1457",
+      "Skipped, already imported\t43",
+      "Skipped, you edited them\t0"
+    ]
+  },
+  {
+    "step": "5 command hidden when active file is not an imported note",
+    "ok": true,
+    "evidence": [
+      "No results found."
+    ]
+  },
+  {
+    "step": "5 listed on imported note; with Agent Threads absent a Notice explains",
+    "ok": true,
+    "evidence": {
+      "palette": [
+        "ChatGPT Import: Continue in Agent Threads"
+      ],
+      "notices": [
+        "Continue in Agent Threads needs the Agent Threads plugin. Install and enable it, then try again.×"
+      ]
+    }
+  },
+  {
+    "step": "5 positive path (STUB api): create -> send prompt with note path -> open",
+    "ok": true,
+    "evidence": [
+      [
+        "create",
+        {
+          "title": "Continue: Planning a garden"
+        }
+      ],
+      [
+        "send",
+        "t-1",
+        {
+          "prompt": "Continue the conversation from the imported ChatGPT note [[ChatGPT/2023-11-14 Planning a garden.md]] (vault path: ChatGPT/2023-11-14 Planning a garden.md).\n\nRead that note first. Then give me a two or three sentence recap of where the conversation left off and ask what I want to do next."
+        }
+      ],
+      [
+        "open",
+        "t-1"
+      ]
+    ]
+  },
+  {
+    "step": "5 imported notes persisted across app restart",
+    "ok": true,
+    "evidence": 53
+  },
+  {
+    "step": "console: no plugin load errors",
+    "ok": true,
+    "evidence": []
+  }
+]

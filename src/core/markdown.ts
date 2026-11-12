@@ -1,3 +1,4 @@
+import { fitFileName } from './filename';
 import { HASH_KEY, contentHash, yamlString } from './frontmatter';
 import { activePath, descend } from './tree';
 import type { ConvNode, Conversation, Message } from './types';
@@ -34,24 +35,91 @@ export interface RenderedNote {
 const CITATION_SPAN = /[^]*/g;
 const PRIVATE_USE_MARKERS = /[-]/g;
 
+const FILE_NAME_ILLEGAL = /[\\/:*?"<>|#^[\]]/g;
+
 export function sanitizeFileName(title: string): string {
-  const cleaned = title
-    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
-    .replace(/[\\/:*?"<>|#^[\]]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80)
+  const cleaned = Array.from(
+    title
+      .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+      .replace(FILE_NAME_ILLEGAL, '')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  )
+    .slice(0, 80) // code points, so a surrogate pair is never cut in half
+    .join('')
     .replace(/^[.\s]+|[.\s]+$/g, '');
   return cleaned || 'Untitled';
 }
 
-const toIso = (seconds: number | null): string | undefined =>
-  seconds === null ? undefined : new Date(seconds * 1000).toISOString();
+/** Last path segment of a ZIP entry, made safe for a wikilink and a vault path. */
+export function sanitizeAttachmentName(entryName: string): string {
+  const base = entryName.slice(Math.max(entryName.lastIndexOf('/'), entryName.lastIndexOf('\\')) + 1);
+  const cleaned = base
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(FILE_NAME_ILLEGAL, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\.+/, '');
+  if (!cleaned) return 'attachment';
+  const dot = cleaned.lastIndexOf('.');
+  const hasExt = dot > 0 && cleaned.length - dot <= 16;
+  return fitFileName(hasExt ? cleaned.slice(0, dot) : cleaned, '', hasExt ? cleaned.slice(dot) : '');
+}
+
+/**
+ * Normalizes the `folder` option to a vault-relative path with `/` separators and no trailing
+ * slash ('' is the vault root). Throws on anything that could escape the vault. Call it when
+ * options are accepted so a bad value fails before a batch starts, not mid-import.
+ */
+export function validateFolder(folder: string): string {
+  if (/[\u0000-\u001f\u007f]/.test(folder)) throw new Error('Invalid folder: contains control characters');
+  const unified = folder.replace(/\\/g, '/');
+  if (unified.startsWith('/')) throw new Error(`Invalid folder "${folder}": must be vault-relative, not absolute`);
+  if (/^[A-Za-z]:/.test(unified)) throw new Error(`Invalid folder "${folder}": drive letters are not allowed`);
+  const segments: string[] = [];
+  for (const seg of unified.split('/')) {
+    if (seg === '..') throw new Error(`Invalid folder "${folder}": ".." segments are not allowed`);
+    if (seg !== '' && seg !== '.') segments.push(seg);
+  }
+  return segments.join('/');
+}
+
+const inFolder = (folder: string, rest: string): string => (folder ? `${folder}/${rest}` : rest);
+
+const toIso = (seconds: number | null): string | undefined => {
+  if (seconds === null || !Number.isFinite(seconds)) return undefined;
+  const date = new Date(seconds * 1000);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString(); // toISOString throws on invalid dates
+};
+
+const FENCE_LANGUAGE = /^[\w+#.-]+$/;
+
+function safeLanguage(language: string): string {
+  const first = language.trim().split(/\s+/)[0] ?? '';
+  return FENCE_LANGUAGE.test(first) ? first : '';
+}
 
 function fence(text: string, language: string): string {
   const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map(r => r.length));
   const ticks = '`'.repeat(Math.max(3, longest + 1));
-  return `${ticks}${language}\n${text}\n${ticks}`;
+  return `${ticks}${safeLanguage(language)}\n${text}\n${ticks}`;
+}
+
+/** Appends a closing fence when the text ends inside a fenced code block. */
+function closeFences(text: string): string {
+  let open: { char: string; length: number } | null = null;
+  for (const line of text.split('\n')) {
+    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line.replace(/\r$/, ''));
+    if (!m) continue;
+    const char = m[1][0];
+    if (!open) {
+      if (char === '`' && m[2].includes('`')) continue; // inline code, not a fence opener
+      open = { char, length: m[1].length };
+    } else if (char === open.char && m[1].length >= open.length && m[2].trim() === '') {
+      open = null;
+    }
+  }
+  return open ? `${text}\n${open.char.repeat(open.length)}` : text;
 }
 
 const quote = (text: string): string => text.split('\n').map(l => (l ? `> ${l}` : '>')).join('\n');
@@ -60,9 +128,29 @@ interface Ctx {
   opts: Required<Pick<MarkdownOptions, 'includeBranches' | 'toolMessages'>> & Pick<MarkdownOptions, 'resolveAsset'>;
   folder: string;
   attachments: Map<string, AttachmentRef>;
+  /** ZIP entry name -> sanitized file name already assigned in this note. */
+  attachmentFiles: Map<string, string>;
   skipped: Set<string>;
   conv: Conversation;
   visited: Set<string>;
+}
+
+/** Sanitized file name for an attachment; two sources that sanitize alike get distinct names. */
+function attachmentFile(source: string, ctx: Ctx): string {
+  const existing = ctx.attachmentFiles.get(source);
+  if (existing) return existing;
+  const clean = sanitizeAttachmentName(source);
+  const dot = clean.lastIndexOf('.');
+  const stem = dot > 0 ? clean.slice(0, dot) : clean;
+  const ext = dot > 0 ? clean.slice(dot) : '';
+  let file = clean;
+  for (let n = 2; ctx.attachments.has(inFolder(ctx.folder, `attachments/${file}`)); n++) {
+    file = fitFileName(stem, `-${n}`, ext);
+  }
+  const targetPath = inFolder(ctx.folder, `attachments/${file}`);
+  ctx.attachments.set(targetPath, { sourceName: source, targetPath });
+  ctx.attachmentFiles.set(source, file);
+  return file;
 }
 
 function renderParts(msg: Message, ctx: Ctx): string {
@@ -70,21 +158,19 @@ function renderParts(msg: Message, ctx: Ctx): string {
   for (const part of msg.parts) {
     if (part.kind === 'text') {
       const text = part.text.replace(CITATION_SPAN, '').replace(PRIVATE_USE_MARKERS, '').trim();
-      if (text) out.push(text);
+      if (text) out.push(closeFences(text));
     } else if (part.kind === 'code') {
       out.push(fence(part.text, part.language));
     } else if (part.kind === 'image') {
       const source = ctx.opts.resolveAsset?.(part.pointer);
       if (source) {
-        const file = source.slice(source.lastIndexOf('/') + 1);
-        const targetPath = `${ctx.folder}/attachments/${file}`;
-        ctx.attachments.set(targetPath, { sourceName: source, targetPath });
+        const file = attachmentFile(source, ctx);
         out.push(`![[attachments/${file}]]`);
       } else {
         out.push(`> [!note] Image not found in export: ${part.pointer.replace(/^[a-z-]+:\/\//i, '')}`);
       }
     } else {
-      out.push(part.text.trim());
+      out.push(closeFences(part.text.trim()));
     }
   }
   return out.filter(Boolean).join('\n\n');
@@ -102,6 +188,7 @@ function renderChain(chain: ConvNode[], ctx: Ctx): string[] {
     const msg = node.message;
     if (msg) {
       if (!msg.known) ctx.skipped.add(msg.contentType);
+      if (msg.known && !msg.hidden) for (const kind of msg.droppedParts) ctx.skipped.add(`part:${kind}`);
       if (!msg.hidden && msg.known) {
         if (msg.role === 'user' || msg.role === 'assistant') {
           const body = renderParts(msg, ctx);
@@ -140,7 +227,7 @@ function lastAssistantModel(path: ConvNode[], conv: Conversation): string | unde
 }
 
 export function toMarkdown(conv: Conversation, options: MarkdownOptions = {}): RenderedNote {
-  const folder = (options.folder ?? 'ChatGPT').replace(/\/+$/, '');
+  const folder = validateFolder(options.folder ?? 'ChatGPT');
   const path = activePath(conv);
   const ctx: Ctx = {
     opts: {
@@ -148,7 +235,7 @@ export function toMarkdown(conv: Conversation, options: MarkdownOptions = {}): R
       toolMessages: options.toolMessages ?? 'callout',
       resolveAsset: options.resolveAsset,
     },
-    folder, attachments: new Map(), skipped: new Set(), conv, visited: new Set(path.map(n => n.id)),
+    folder, attachments: new Map(), attachmentFiles: new Map(), skipped: new Set(), conv, visited: new Set(path.map(n => n.id)),
   };
 
   const blocks = renderChain(path, ctx);
@@ -174,7 +261,7 @@ export function toMarkdown(conv: Conversation, options: MarkdownOptions = {}): R
 
   const datePrefix = (created ?? updated)?.slice(0, 10) ?? 'undated';
   return {
-    path: `${folder}/${datePrefix} ${sanitizeFileName(title)}.md`,
+    path: inFolder(folder, fitFileName(`${datePrefix} ${sanitizeFileName(title)}`, '', '.md')),
     content,
     chatgptId: conv.id,
     hash,

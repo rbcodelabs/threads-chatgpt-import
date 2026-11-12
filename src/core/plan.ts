@@ -1,3 +1,4 @@
+import { fitFileName } from './filename';
 import { HASH_KEY, contentHash, parseFrontmatter } from './frontmatter';
 import type { RenderedNote } from './markdown';
 
@@ -22,12 +23,26 @@ export function shortId(id: string): string {
   return id.replace(/[^A-Za-z0-9]/g, '').slice(-8) || 'id';
 }
 
+/**
+ * Collision key. macOS and Windows volumes are case-insensitive (and may store either Unicode
+ * normalization form), so two paths that differ only in case or NFC/NFD are the same file there.
+ */
+export function pathKey(path: string): string {
+  return path.normalize('NFC').toLowerCase().normalize('NFC');
+}
+
 function withIdSuffix(path: string, id: string, taken: Set<string>): string {
-  const dot = path.lastIndexOf('.');
-  const stem = dot > path.lastIndexOf('/') ? path.slice(0, dot) : path;
-  const ext = dot > path.lastIndexOf('/') ? path.slice(dot) : '';
-  let candidate = `${stem} (${shortId(id)})${ext}`;
-  for (let n = 2; taken.has(candidate); n++) candidate = `${stem} (${shortId(id)}-${n})${ext}`;
+  const slash = path.lastIndexOf('/');
+  const dir = path.slice(0, slash + 1);
+  const file = path.slice(slash + 1);
+  const dot = file.lastIndexOf('.');
+  const stem = dot > 0 ? file.slice(0, dot) : file;
+  const ext = dot > 0 ? file.slice(dot) : '';
+  // Only the stem is shortened, so the whole filename stays within the byte cap.
+  let candidate = dir + fitFileName(stem, ` (${shortId(id)})`, ext);
+  for (let n = 2; taken.has(pathKey(candidate)); n++) {
+    candidate = dir + fitFileName(stem, ` (${shortId(id)}-${n})`, ext);
+  }
   return candidate;
 }
 
@@ -35,9 +50,15 @@ function withIdSuffix(path: string, id: string, taken: Set<string>): string {
  * Decides create/update/skip per incoming note, keyed by chatgpt_id.
  * A note is only ever overwritten if its current content still hashes to the
  * `chatgpt_import_hash` we stored, i.e. nobody has touched it since the last import.
+ *
+ * TOCTOU: this is a pure function over a snapshot of the vault. The Phase 2 writer MUST, for
+ * every `update`, re-read the note immediately before writing, recompute `contentHash`, and
+ * abort that item if it no longer equals the stored `chatgpt_import_hash` (the user may have
+ * edited it, or sync may have replaced it, since the snapshot). Likewise a `create` must use an
+ * exclusive-create write (or re-check existence) so it never replaces a file that appeared meanwhile.
  */
 export function planImport(existing: ExistingNote[], incoming: RenderedNote[]): PlanItem[] {
-  const taken = new Set(existing.map(e => e.path));
+  const taken = new Set(existing.map(e => pathKey(e.path)));
   const byId = new Map<string, ExistingNote & { storedHash?: string }>();
   for (const note of existing) {
     const fm = parseFrontmatter(note.content);
@@ -51,8 +72,8 @@ export function planImport(existing: ExistingNote[], incoming: RenderedNote[]): 
   return incoming.map((note): PlanItem => {
     const ex = byId.get(note.chatgptId);
     if (!ex) {
-      const path = taken.has(note.path) ? withIdSuffix(note.path, note.chatgptId, taken) : note.path;
-      taken.add(path);
+      const path = taken.has(pathKey(note.path)) ? withIdSuffix(note.path, note.chatgptId, taken) : note.path;
+      taken.add(pathKey(path));
       return { action: 'create', path, chatgptId: note.chatgptId, note: { ...note, path } };
     }
     const base = { path: ex.path, chatgptId: note.chatgptId, note: { ...note, path: ex.path } };

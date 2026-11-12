@@ -71,5 +71,11 @@ npm run build
 `src/core/` has no Obsidian, Electron or DOM imports (only `node:crypto` and `yauzl`) so a CLI can reuse it.
 ZIP reading uses [`yauzl`](https://github.com/thejoshwolfe/yauzl): it reads the central directory and then
 extracts single entries on demand, so a multi-GB export is never held in memory (an in-memory unzipper such as
-fflate's `unzipSync` would be). Each `conversations*.json` shard is parsed whole, which is why very large exports
-are sharded by OpenAI.
+fflate's `unzipSync` would be). Each `conversations*.json` shard is parsed whole (shard-granular, not streamed),
+which is why very large exports are sharded by OpenAI. A single shard over 128 MB is skipped and reported, and
+`readEntry` refuses entries over 256 MiB by default; attachments should be copied with `copyEntryTo` / `openEntryStream`,
+which stream and enforce the same limits on the bytes actually produced.
+
+Imports are tolerant of bad data: out-of-range timestamps, unknown content or part types, duplicate conversation ids
+(newest `update_time` wins) and malformed message trees (cycles, missing parents, extra roots) are counted in the
+parse report instead of failing the run.

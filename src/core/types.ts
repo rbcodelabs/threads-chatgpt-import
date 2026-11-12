@@ -25,6 +25,8 @@ export interface Message {
   known: boolean;
   hidden: boolean;
   parts: Part[];
+  /** content_type of part objects we could not render (audio/video pointers, ...), in order. */
+  droppedParts: string[];
 }
 
 export interface ConvNode {
@@ -52,5 +54,13 @@ export interface ParseReport {
   /** content_type -> occurrences, for content we could not render. */
   unknownContentTypes: Record<string, number>;
   unknownRoles: Record<string, number>;
+  /** Unrecognized part objects inside otherwise known messages (content_type -> occurrences). */
+  unknownPartTypes: Record<string, number>;
+  /** Finite timestamps outside the representable Date range; treated as missing. */
+  invalidTimestamps: number;
+  /** Conversations dropped because another one with the same id had a newer update_time. */
+  duplicateConversations: number;
+  /** Structural problems in the message tree (cycles, missing parents, extra roots). Capped. */
+  treeIssues: string[];
   errors: string[];
 }

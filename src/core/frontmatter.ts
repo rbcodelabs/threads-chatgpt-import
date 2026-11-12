@@ -17,15 +17,23 @@ export interface Frontmatter {
 
 const CLOSER = /^---[ \t]*$/m;
 
-/** Splits off the leading frontmatter block. Only the first closing `---` counts. */
-function splitFrontmatter(content: string): { head: string; body: string } | null {
-  if (!/^---[ \t]*\r?\n/.test(content)) return null;
-  const afterOpen = content.indexOf('\n') + 1;
-  const rest = content.slice(afterOpen);
+const BOM = '\ufeff';
+
+/**
+ * Splits off the leading frontmatter block. Only the first closing `---` counts, and a leading
+ * UTF-8 BOM (Windows editors add one) is ignored for detection. `headStart` is the offset of the
+ * first frontmatter line within the original `content`.
+ */
+function splitFrontmatter(content: string): { head: string; body: string; headStart: number } | null {
+  const bom = content.startsWith(BOM) ? BOM.length : 0;
+  const text = content.slice(bom);
+  if (!/^---[ \t]*\r?\n/.test(text)) return null;
+  const afterOpen = text.indexOf('\n') + 1;
+  const rest = text.slice(afterOpen);
   const m = CLOSER.exec(rest);
   if (!m) return null;
   const end = m.index + m[0].length;
-  return { head: rest.slice(0, m.index), body: rest.slice(end).replace(/^\r?\n/, '') };
+  return { head: rest.slice(0, m.index), body: rest.slice(end).replace(/^\r?\n/, ''), headStart: bom + afterOpen };
 }
 
 /** Minimal reader for the single-line `key: value` frontmatter this plugin writes. */
@@ -57,7 +65,7 @@ export function contentHash(content: string): string {
   const split = splitFrontmatter(content);
   let normalized = content;
   if (split) {
-    const headStart = content.indexOf('\n') + 1;
+    const { headStart } = split;
     const head = content.slice(headStart, headStart + split.head.length);
     const stripped = head.split('\n').filter(l => !l.startsWith(`${HASH_KEY}:`)).join('\n');
     normalized = content.slice(0, headStart) + stripped + content.slice(headStart + split.head.length);

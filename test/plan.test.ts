@@ -117,4 +117,33 @@ describe('planImport', () => {
       expect(planImport([{ path: n.path, content: legacy }], [next])[0].action).toBe('update');
     });
   });
+
+  describe('duplicate chatgpt_id across vault notes (A8)', () => {
+    it('picks the same note whatever order the vault lists them in: the untouched one, never the edited copy', async () => {
+      const old = await note('plain.json');
+      const next = await note('plain.json', raw => { raw.update_time += 100; raw.mapping.a1.message.content.parts = ['Newer']; });
+      const untouched = { path: 'Archive/a copy.md', content: old.content };
+      const edited = { path: 'ChatGPT/edited copy.md', content: old.content + '\nmy notes' };
+      for (const order of [[untouched, edited], [edited, untouched]]) {
+        const plan = planImport(order, [next]);
+        expect(plan).toHaveLength(1);
+        expect(plan[0]).toMatchObject({ action: 'update', path: 'Archive/a copy.md' });
+      }
+    });
+
+    it('with two untouched copies the choice is stable (first path), and no note is planned for creation', async () => {
+      const n = await note('plain.json');
+      const a = { path: 'B/two.md', content: n.content };
+      const b = { path: 'A/one.md', content: n.content };
+      for (const order of [[a, b], [b, a]]) {
+        expect(planImport(order, [n])[0]).toMatchObject({ action: 'skip', reason: 'unchanged', path: 'A/one.md' });
+      }
+    });
+
+    it('with only edited copies the note is skipped as modified-locally, not created a third time', async () => {
+      const old = await note('plain.json');
+      const plan = planImport([{ path: 'x.md', content: old.content + '1' }, { path: 'y.md', content: old.content + '2' }], [old]);
+      expect(plan[0]).toMatchObject({ action: 'skip', reason: 'modified-locally', path: 'x.md' });
+    });
+  });
 });

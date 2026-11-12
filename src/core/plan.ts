@@ -46,6 +46,20 @@ export function withIdSuffix(path: string, id: string, taken: Set<string>): stri
   return candidate;
 }
 
+type Known = ExistingNote & { storedHash?: string; sourceHash?: string };
+const isUntouched = (n: Known): boolean => !!n.storedHash && n.storedHash === contentHash(n.content);
+
+/**
+ * Two vault notes can claim one chatgpt_id (the user duplicated a note). Pick one deterministically,
+ * independent of listing order: a note still exactly as we wrote it beats one that was edited (so a
+ * copy the user is working in is never the update target), then the lowest path.
+ */
+function prefer(candidate: Known, current: Known): boolean {
+  const c = isUntouched(candidate);
+  if (c !== isUntouched(current)) return c;
+  return pathKey(candidate.path) < pathKey(current.path);
+}
+
 /**
  * Decides create/update/skip per incoming note, keyed by chatgpt_id.
  * A note is only ever overwritten if its current content still hashes to the
@@ -60,18 +74,20 @@ export function withIdSuffix(path: string, id: string, taken: Set<string>): stri
  */
 export function planImport(existing: ExistingNote[], incoming: RenderedNote[]): PlanItem[] {
   const taken = new Set(existing.map(e => pathKey(e.path)));
-  const byId = new Map<string, ExistingNote & { storedHash?: string; sourceHash?: string }>();
+  const byId = new Map<string, Known>();
   for (const note of existing) {
     const fm = parseFrontmatter(note.content);
     const id = fm?.data.chatgpt_id;
     if (typeof id === 'string' && id) {
       const stored = fm?.data[HASH_KEY];
       const source = fm?.data[SOURCE_HASH_KEY];
-      byId.set(id, {
+      const candidate = {
         ...note,
         storedHash: typeof stored === 'string' ? stored : undefined,
         sourceHash: typeof source === 'string' ? source : undefined,
-      });
+      };
+      const current = byId.get(id);
+      if (!current || prefer(candidate, current)) byId.set(id, candidate);
     }
   }
 

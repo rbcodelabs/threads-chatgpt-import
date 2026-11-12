@@ -187,6 +187,11 @@ function assetIdOf(entryName: string): string | undefined {
   return ASSET_ID.exec(entryName.slice(entryName.lastIndexOf('/') + 1))?.[1];
 }
 
+export interface ConversationsOptions {
+  /** Checked between shards and between conversations; rejects with `Error('cancelled')`. */
+  signal?: AbortSignal;
+}
+
 export interface ParsedExport {
   /**
    * Live: counters fill in as `conversations()` is consumed. Each call to `conversations()`
@@ -200,7 +205,7 @@ export interface ParsedExport {
    * newest-`update_time`-wins (first seen on a tie), which costs one extra light parse of every
    * shard to build the id index before any conversation is normalized.
    */
-  conversations(): AsyncGenerator<Conversation>;
+  conversations(opts?: ConversationsOptions): AsyncGenerator<Conversation>;
   /** Maps an asset pointer (e.g. `file-service://file-ABC`) to the ZIP entry that holds it. */
   resolveAsset(pointer: string): string | undefined;
   /** Uncompressed size of an entry in bytes, or undefined if there is no such entry. */
@@ -247,13 +252,16 @@ export async function parseExport(zipPath: string): Promise<ParsedExport> {
     }
   }
 
-  async function* conversations(): AsyncGenerator<Conversation> {
+  async function* conversations(opts: ConversationsOptions = {}): AsyncGenerator<Conversation> {
+    const checkCancelled = (): void => { if (opts.signal?.aborted) throw new Error('cancelled'); };
+    checkCancelled();
     resetReport(report);
     if (sources.length === 0) report.errors.push(NO_SOURCES_ERROR);
 
     // Pass 1: which (shard, index) holds the newest copy of each id.
     const winners = new Map<string, { at: string; time: number }>();
     for (let s = 0; s < sources.length; s++) {
+      checkCancelled();
       const text = await shardText(sources[s], null);
       const list = text === null ? null : rawList(text, null);
       list?.forEach((item, i) => {
@@ -267,12 +275,14 @@ export async function parseExport(zipPath: string): Promise<ParsedExport> {
 
     // Pass 2: normalize only the winners.
     for (let s = 0; s < sources.length; s++) {
+      checkCancelled();
       const name = sources[s];
       const text = await shardText(name, report.errors);
       if (text === null) continue;
       report.sourceFiles.push(name);
       const list = rawList(text, report.errors) ?? [];
       for (let i = 0; i < list.length; i++) {
+        checkCancelled();
         const id = rawId(list[i]);
         if (id && winners.get(id)?.at !== `${s}:${i}`) { report.duplicateConversations++; continue; }
         const conv = normalizeConversation(list[i], report);

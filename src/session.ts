@@ -33,7 +33,7 @@ export async function prepareImport(
       ...(settings.importAttachments ? { resolveAsset: (p: string) => parsed.resolveAsset(p) } : {}),
     };
     const notes: RenderedNote[] = [];
-    for await (const conv of parsed.conversations()) {
+    for await (const conv of parsed.conversations({ signal: opts.signal })) {
       if (opts.signal?.aborted) throw new Error('cancelled');
       notes.push(toMarkdown(conv, mdOptions));
     }
@@ -53,7 +53,10 @@ export function disposePrepared(prepared: Prepared): void {
 /** The explicit Import step. Closes the archive when done, whatever happens. */
 export async function runImport(prepared: Prepared, vault: VaultPort, opts: WriteOptions = {}): Promise<WriteResult> {
   try {
-    return await executePlan(vault, prepared.plan, prepared.parsed, opts);
+    return await executePlan(vault, prepared.plan, prepared.parsed, {
+      maxAttachmentBytes: Math.floor(prepared.settings.maxAttachmentMb * 1024 * 1024),
+      ...opts,
+    });
   } finally {
     prepared.parsed.close();
   }

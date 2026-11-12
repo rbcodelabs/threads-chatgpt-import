@@ -1,6 +1,7 @@
 import { PluginSettingTab, Setting } from 'obsidian';
 import type { App, Plugin } from 'obsidian';
 import { validateFolder } from './core';
+import { DEFAULT_SETTINGS, MAX_ATTACHMENT_MB_LIMIT } from './settings';
 import type { ImportSettings } from './settings';
 
 export interface SettingsHost {
@@ -32,6 +33,15 @@ export class ChatGptImportSettingTab extends PluginSettingTab {
       .addToggle(t => t.setValue(s.includeBranches).onChange(v => { s.includeBranches = v; save(); }));
     new Setting(containerEl).setName('Import attachments').setDesc('Copy images and files from the export into the vault.')
       .addToggle(t => t.setValue(s.importAttachments).onChange(v => { s.importAttachments = v; save(); }));
+    const capError = containerEl.createEl('p', { cls: 'threads-chatgpt-import-error' });
+    new Setting(containerEl).setName('Largest attachment (MB)').setDesc('Attachments bigger than this are skipped with a warning. Each one is held in memory while it is copied.')
+      .addText(t => t.setPlaceholder(String(DEFAULT_SETTINGS.maxAttachmentMb)).setValue(String(s.maxAttachmentMb)).onChange(v => {
+        const n = Number(v);
+        if (!v.trim() || !Number.isFinite(n) || n <= 0) { capError.setText('Enter a number of megabytes greater than 0.'); return; }
+        capError.setText('');
+        s.maxAttachmentMb = Math.min(n, MAX_ATTACHMENT_MB_LIMIT);
+        save();
+      }));
     new Setting(containerEl).setName('Tool and browsing output').setDesc('Fold into collapsed callouts, or leave out.')
       .addDropdown(d => d.addOption('callout', 'Collapsed callouts').addOption('drop', 'Leave out').setValue(s.toolMessages)
         .onChange(v => { s.toolMessages = v === 'drop' ? 'drop' : 'callout'; save(); }));

@@ -4,9 +4,15 @@ import { parseFrontmatter } from './core';
 import type { ExistingNote } from './core';
 import type { VaultPort } from './writer';
 
-/** Exact copy of the bytes: `Uint8Array.buffer` may be a larger shared pool slice (Node Buffers are). */
-function toArrayBuffer(data: Uint8Array): ArrayBuffer {
-  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+/**
+ * The bytes as their own ArrayBuffer. `Uint8Array.buffer` may be a larger shared pool slice (Node
+ * Buffers are), so only a view spanning its whole buffer is passed through; anything else is copied.
+ * Skipping the copy matters for attachments, which can be tens of MB.
+ */
+export function toArrayBuffer(data: Uint8Array): ArrayBuffer {
+  const { buffer, byteOffset, byteLength } = data;
+  if (buffer instanceof ArrayBuffer && byteOffset === 0 && byteLength === buffer.byteLength) return buffer;
+  return buffer.slice(byteOffset, byteOffset + byteLength) as ArrayBuffer;
 }
 
 /** Vault API implementation of the writer's port. Thin on purpose: all logic lives in writer.ts. */

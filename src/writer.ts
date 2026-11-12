@@ -50,7 +50,7 @@ export interface WriteResult {
   cancelled: boolean;
 }
 
-export const DEFAULT_MAX_ATTACHMENT_BYTES = 128 * 1024 * 1024;
+export const DEFAULT_MAX_ATTACHMENT_BYTES = 64 * 1024 * 1024;
 const MAX_NAME_ATTEMPTS = 1000;
 
 const sha256 = (data: Uint8Array): string => createHash('sha256').update(data).digest('hex');

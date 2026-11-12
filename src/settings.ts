@@ -8,6 +8,8 @@ export interface ImportSettings {
   includeBranches: boolean;
   importAttachments: boolean;
   toolMessages: 'callout' | 'drop';
+  /** Per-attachment size cap, in MiB. The vault API cannot stream, so each attachment is buffered once. */
+  maxAttachmentMb: number;
 }
 
 export const DEFAULT_SETTINGS: Readonly<ImportSettings> = Object.freeze({
@@ -16,7 +18,10 @@ export const DEFAULT_SETTINGS: Readonly<ImportSettings> = Object.freeze({
   includeBranches: false,
   importAttachments: true,
   toolMessages: 'callout',
+  maxAttachmentMb: 64,
 });
+
+export const MAX_ATTACHMENT_MB_LIMIT = 4096;
 
 const bool = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean' ? v : fallback);
 
@@ -33,6 +38,9 @@ export function normalizeSettings(raw: unknown): ImportSettings {
     includeBranches: bool(r.includeBranches, DEFAULT_SETTINGS.includeBranches),
     importAttachments: bool(r.importAttachments, DEFAULT_SETTINGS.importAttachments),
     toolMessages: r.toolMessages === 'drop' ? 'drop' : 'callout',
+    maxAttachmentMb: typeof r.maxAttachmentMb === 'number' && Number.isFinite(r.maxAttachmentMb) && r.maxAttachmentMb > 0
+      ? Math.min(r.maxAttachmentMb, MAX_ATTACHMENT_MB_LIMIT)
+      : DEFAULT_SETTINGS.maxAttachmentMb,
   };
 }
 

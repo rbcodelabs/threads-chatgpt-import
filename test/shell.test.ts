@@ -13,9 +13,18 @@ describe('settings', () => {
 
   it('keeps valid values, drops unknown keys, falls back on bad ones', () => {
     expect(normalizeSettings({ folder: 'Archive\\GPT/', groupByMonth: true, includeBranches: true, importAttachments: false, toolMessages: 'drop', junk: 1 }))
-      .toEqual({ folder: 'Archive/GPT', groupByMonth: true, includeBranches: true, importAttachments: false, toolMessages: 'drop' });
+      .toEqual({ folder: 'Archive/GPT', groupByMonth: true, includeBranches: true, importAttachments: false, toolMessages: 'drop', maxAttachmentMb: 64 });
     expect(normalizeSettings({ folder: '../escape', groupByMonth: 'yes', toolMessages: 'weird' })).toEqual(DEFAULT_SETTINGS);
     expect(normalizeSettings({ folder: '/abs' }).folder).toBe('ChatGPT');
+  });
+
+  it('A5: attachment cap defaults to 64 MB and is a validated setting', () => {
+    expect(DEFAULT_SETTINGS.maxAttachmentMb).toBe(64);
+    expect(normalizeSettings({ maxAttachmentMb: 10 }).maxAttachmentMb).toBe(10);
+    expect(normalizeSettings({ maxAttachmentMb: 1.5 }).maxAttachmentMb).toBe(1.5);
+    for (const bad of [0, -5, NaN, Infinity, '12', null, 100000]) {
+      expect(normalizeSettings({ maxAttachmentMb: bad }).maxAttachmentMb, String(bad)).toBe(bad === 100000 ? 4096 : 64);
+    }
   });
 
   it('maps to markdown options', () => {

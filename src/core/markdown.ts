@@ -70,7 +70,7 @@ export function sanitizeAttachmentName(entryName: string): string {
 
 /**
  * Normalizes the `folder` option to a vault-relative path with `/` separators and no trailing
- * slash ('' is the vault root). Throws on anything that could escape the vault. Call it when
+ * slash ('' is the vault root). Trims segment whitespace and throws on anything that could escape the vault or land in a hidden/config folder. Call it when
  * options are accepted so a bad value fails before a batch starts, not mid-import.
  */
 export function validateFolder(folder: string): string {
@@ -79,9 +79,13 @@ export function validateFolder(folder: string): string {
   if (unified.startsWith('/')) throw new Error(`Invalid folder "${folder}": must be vault-relative, not absolute`);
   if (/^[A-Za-z]:/.test(unified)) throw new Error(`Invalid folder "${folder}": drive letters are not allowed`);
   const segments: string[] = [];
-  for (const seg of unified.split('/')) {
+  for (const raw of unified.split('/')) {
+    const seg = raw.trim();
     if (seg === '..') throw new Error(`Invalid folder "${folder}": ".." segments are not allowed`);
-    if (seg !== '' && seg !== '.') segments.push(seg);
+    if (seg === '' || seg === '.') continue;
+    // .obsidian / .geode hold app config, .git / .trash are not content: never a place to import into.
+    if (seg.startsWith('.')) throw new Error(`Invalid folder "${folder}": folders starting with "." are reserved (for example .obsidian, .geode, .git, .trash)`);
+    segments.push(seg);
   }
   return segments.join('/');
 }

@@ -243,6 +243,20 @@ describe('8. folder option', () => {
     }
   });
 
+  it('A4: rejects dot-prefixed segments (.obsidian, .geode, .git, .trash, any hidden folder)', () => {
+    for (const bad of ['.obsidian', '.geode/plugins', 'Notes/.git', '.trash', 'a/.hidden/b', ' .obsidian', 'a/ .git /b', '...', '.obsidian\\x']) {
+      expect(() => validateFolder(bad), bad).toThrow(/folder/i);
+      expect(() => render(conversation('c', ['hi']), { folder: bad }), bad).toThrow(/folder/i);
+    }
+  });
+
+  it('A4: trims whitespace around each segment, and drops blank ones', () => {
+    expect(validateFolder(' Inbox / AI  /Chats ')).toBe('Inbox/AI/Chats');
+    expect(validateFolder('a/   /b')).toBe('a/b');
+    expect(validateFolder('   ')).toBe('');
+    expect(validateFolder('a.b/c.d')).toBe('a.b/c.d'); // dots inside a name are fine
+  });
+
   it('normalizes separators, dots and trailing slashes', () => {
     expect(validateFolder('Inbox\\AI//./Chats/')).toBe('Inbox/AI/Chats');
     expect(render(conversation('c', ['hi']), { folder: './Inbox//AI/' }).path).toBe('Inbox/AI/2023-11-14 c.md');

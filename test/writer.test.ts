@@ -251,6 +251,28 @@ describe('executePlan: attachments', () => {
     expect(vault.files().some(f => f.endsWith('.png'))).toBe(false);
   });
 
+  it('B1: an edit made while attachments are being copied survives the update', async () => {
+    const vault = new FakeVault();
+    const old = await withImage('img-1', 'One');
+    vault.seedText(old.path, old.content);
+    const raw = await fixtureJson('image.json');
+    raw.id = 'img-1'; raw.title = 'One'; raw.update_time = 1700009999;
+    const next = render(raw, { resolveAsset: p => (p.endsWith('file-ABC123') ? 'file-ABC123-pic.png' : undefined) });
+    const plan = planImport(existingOf(vault), [next]);
+    expect(plan[0].action).toBe('update');
+    const zip = archive({ 'file-ABC123-pic.png': png });
+    const read = zip.readEntry.bind(zip);
+    // The user types into the note while the (slow) attachment read is in flight.
+    zip.readEntry = async (name, opts) => {
+      vault.seedText(old.path, old.content + '\nTyped during the attachment copy');
+      return read(name, opts);
+    };
+    const res = await executePlan(vault, plan, zip);
+    expect(res).toMatchObject({ updated: 0, modifiedLocally: 1, failed: 0 });
+    expect(vault.text(old.path)).toBe(old.content + '\nTyped during the attachment copy');
+    expect(vault.log).not.toContain(`modify ${old.path}`);
+  });
+
   it('does not touch attachments for skipped notes', async () => {
     const vault = new FakeVault();
     const note = await withImage('img-1', 'One');

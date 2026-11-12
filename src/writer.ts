@@ -207,7 +207,7 @@ class Writer {
   }
 
   /** Copies the note's attachments, returning the content with embeds pointing at where they landed. */
-  private async withAttachments(item: PlanItem): Promise<string> {
+  private async withAttachments(item: PlanItem): Promise<{ content: string }> {
     const renames = new Map<string, string>();
     for (const ref of item.note.attachments) {
       try {
@@ -218,11 +218,11 @@ class Writer {
         this.result.warnings.push(`${item.path}: attachment ${ref.sourceName}: ${message(e)}`);
       }
     }
-    return rewriteEmbeds(item.note.content, renames);
+    return { content: rewriteEmbeds(item.note.content, renames) };
   }
 
   private async create(item: PlanItem): Promise<void> {
-    const content = await this.withAttachments(item);
+    const { content } = await this.withAttachments(item);
     const mtime = mtimeOf(content);
     await this.createExclusive(
       item.path,
@@ -233,18 +233,22 @@ class Writer {
   }
 
   private async update(item: PlanItem): Promise<void> {
-    // TOCTOU: the plan is a snapshot. Re-read and re-hash right now; anything that no longer
-    // verifies as "exactly what we last wrote" is the user's (or sync's) and stays untouched.
+    // TOCTOU: the plan is a snapshot, and copying attachments can take a long time. Verify before
+    // the copy (cheap early exit, avoids copying for a note that is already the user's) and again
+    // immediately before the write, which is the check that actually protects the user's edits.
+    if (!(await this.untouched(item))) { this.result.modifiedLocally++; return; }
+    const { content } = await this.withAttachments(item);
+    if (!(await this.untouched(item))) { this.result.modifiedLocally++; return; }
+    await this.vault.modifyText(item.path, content, mtimeOf(content));
+    this.result.updated++;
+  }
+
+  /** True only while the note at `item.path` is still exactly what we last wrote for this conversation. */
+  private async untouched(item: PlanItem): Promise<boolean> {
     const current = await this.vault.readText(item.path);
     const fm = current === null ? null : parseFrontmatter(current);
     const stored = fm?.data[HASH_KEY];
-    if (current === null || !fm || fm.data.chatgpt_id !== item.chatgptId || typeof stored !== 'string' || stored !== contentHash(current)) {
-      this.result.modifiedLocally++;
-      return;
-    }
-    const content = await this.withAttachments(item);
-    await this.vault.modifyText(item.path, content, mtimeOf(content));
-    this.result.updated++;
+    return current !== null && !!fm && fm.data.chatgpt_id === item.chatgptId && typeof stored === 'string' && stored === contentHash(current);
   }
 
   async run(plan: PlanItem[], opts: WriteOptions): Promise<WriteResult> {

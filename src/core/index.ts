@@ -7,4 +7,4 @@ export type { AttachmentRef, MarkdownOptions, RenderedNote } from './markdown';
 export { pathKey, planImport, shortId, withIdSuffix } from './plan';
 export { fitFileName } from './filename';
 export type { ExistingNote, PlanItem } from './plan';
-export { HASH_KEY, contentHash, parseFrontmatter, yamlString } from './frontmatter';
+export { HASH_KEY, SOURCE_HASH_KEY, contentHash, parseFrontmatter, yamlString } from './frontmatter';

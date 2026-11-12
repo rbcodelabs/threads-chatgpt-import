@@ -1,5 +1,5 @@
 import { fitFileName } from './filename';
-import { HASH_KEY, contentHash, yamlString } from './frontmatter';
+import { HASH_KEY, SOURCE_HASH_KEY, contentHash, yamlString } from './frontmatter';
 import { activePath, descend } from './tree';
 import type { ConvNode, Conversation, Message } from './types';
 
@@ -259,7 +259,7 @@ export function toMarkdown(conv: Conversation, options: MarkdownOptions = {}): R
 
   const withoutHash = `---\n${frontLines.join('\n')}\n---\n\n${body}`;
   const hash = contentHash(withoutHash);
-  const content = `---\n${[...frontLines, `${HASH_KEY}: ${yamlString(hash)}`].join('\n')}\n---\n\n${body}`;
+  const content = `---\n${[...frontLines, `${SOURCE_HASH_KEY}: ${yamlString(hash)}`, `${HASH_KEY}: ${yamlString(hash)}`].join('\n')}\n---\n\n${body}`;
 
   const datePrefix = (created ?? updated)?.slice(0, 10) ?? 'undated';
   const noteFolder = options.groupByMonth ? inFolder(folder, datePrefix === 'undated' ? datePrefix : datePrefix.slice(0, 7)) : folder;

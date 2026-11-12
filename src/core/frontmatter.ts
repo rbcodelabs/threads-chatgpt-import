@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 
 export const HASH_KEY = 'chatgpt_import_hash';
+/**
+ * Hash of the note exactly as rendered from the export, before the writer rewrites any embed
+ * (an attachment renamed because its name was taken). Unlike HASH_KEY it never changes for the same
+ * export, so re-importing that export is recognised as unchanged however the embeds were rewritten.
+ */
+export const SOURCE_HASH_KEY = 'chatgpt_source_hash';
 
 const LINE_SEP = String.fromCharCode(0x2028);
 const PARA_SEP = String.fromCharCode(0x2029);
@@ -58,7 +64,8 @@ export function parseFrontmatter(content: string): Frontmatter | null {
 }
 
 /**
- * Hash of the whole note minus its own `chatgpt_import_hash` line. Covering the whole file
+ * Hash of the whole note minus its own `chatgpt_import_hash` and `chatgpt_source_hash` lines (both
+ * are machine-managed derivatives of this value). Covering the whole file
  * (not just the body) means any local edit, including frontmatter tags, counts as "modified".
  */
 export function contentHash(content: string): string {
@@ -67,7 +74,7 @@ export function contentHash(content: string): string {
   if (split) {
     const { headStart } = split;
     const head = content.slice(headStart, headStart + split.head.length);
-    const stripped = head.split('\n').filter(l => !l.startsWith(`${HASH_KEY}:`)).join('\n');
+    const stripped = head.split('\n').filter(l => !l.startsWith(`${HASH_KEY}:`) && !l.startsWith(`${SOURCE_HASH_KEY}:`)).join('\n');
     normalized = content.slice(0, headStart) + stripped + content.slice(headStart + split.head.length);
   }
   return createHash('sha256').update(normalized).digest('hex');

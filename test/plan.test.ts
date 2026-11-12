@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseFrontmatter } from '../src/core/frontmatter';
+import { contentHash, parseFrontmatter } from '../src/core/frontmatter';
 import { toMarkdown } from '../src/core/markdown';
 import { createReport, normalizeConversation } from '../src/core/parse';
 import { planImport, shortId } from '../src/core/plan';
@@ -84,5 +84,37 @@ describe('planImport', () => {
     const existing = first.map(p => ({ path: p.path, content: p.note.content }));
     const second = planImport(existing, [a, b]);
     expect(second.map(p => p.action)).toEqual(['skip', 'skip']);
+  });
+
+  describe('chatgpt_source_hash (B2)', () => {
+    it('is written to the frontmatter and equals the note hash', async () => {
+      const n = await note('plain.json');
+      expect(parseFrontmatter(n.content)!.data.chatgpt_source_hash).toBe(n.hash);
+    });
+
+    it('decides unchanged by the source hash even when the stored import hash differs (attachment renamed)', async () => {
+      const n = await note('plain.json');
+      // What the writer leaves behind after renaming an embed: body changed, import hash recomputed.
+      const renamedBody = n.content.replace('Planning a garden', 'Planning a garden ').replace(/(chatgpt_import_hash: )"[0-9a-f]+"/, '$1"x"');
+      const fixed = renamedBody.replace('"x"', `"${contentHash(renamedBody)}"`);
+      const plan = planImport([{ path: n.path, content: fixed }], [n]);
+      expect(plan[0]).toMatchObject({ action: 'skip', reason: 'unchanged' });
+    });
+
+    it('updates when the source changed, and still skips an edited note', async () => {
+      const old = await note('plain.json');
+      const next = await note('plain.json', raw => { raw.update_time += 100; raw.mapping.a1.message.content.parts = ['Newer']; });
+      expect(planImport([{ path: old.path, content: old.content }], [next])[0].action).toBe('update');
+      expect(planImport([{ path: old.path, content: old.content + '\nedit' }], [next])[0]).toMatchObject({ action: 'skip', reason: 'modified-locally' });
+    });
+
+    it('handles older notes that lack the key: unchanged stays unchanged, changed updates', async () => {
+      const n = await note('plain.json');
+      const legacy = n.content.replace(/^chatgpt_source_hash: .*\n/m, '');
+      expect(parseFrontmatter(legacy)!.data.chatgpt_source_hash).toBeUndefined();
+      expect(planImport([{ path: n.path, content: legacy }], [n])[0]).toMatchObject({ action: 'skip', reason: 'unchanged' });
+      const next = await note('plain.json', raw => { raw.update_time += 100; raw.mapping.a1.message.content.parts = ['Newer']; });
+      expect(planImport([{ path: n.path, content: legacy }], [next])[0].action).toBe('update');
+    });
   });
 });

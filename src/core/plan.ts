@@ -1,5 +1,5 @@
 import { fitFileName } from './filename';
-import { HASH_KEY, contentHash, parseFrontmatter } from './frontmatter';
+import { HASH_KEY, SOURCE_HASH_KEY, contentHash, parseFrontmatter } from './frontmatter';
 import type { RenderedNote } from './markdown';
 
 export interface ExistingNote {
@@ -49,7 +49,8 @@ export function withIdSuffix(path: string, id: string, taken: Set<string>): stri
 /**
  * Decides create/update/skip per incoming note, keyed by chatgpt_id.
  * A note is only ever overwritten if its current content still hashes to the
- * `chatgpt_import_hash` we stored, i.e. nobody has touched it since the last import.
+ * `chatgpt_import_hash` we stored, i.e. nobody has touched it since the last import. Whether an
+ * untouched note is current is decided by `chatgpt_source_hash` (the pre-rename render).
  *
  * TOCTOU: this is a pure function over a snapshot of the vault. The Phase 2 writer MUST, for
  * every `update`, re-read the note immediately before writing, recompute `contentHash`, and
@@ -59,13 +60,18 @@ export function withIdSuffix(path: string, id: string, taken: Set<string>): stri
  */
 export function planImport(existing: ExistingNote[], incoming: RenderedNote[]): PlanItem[] {
   const taken = new Set(existing.map(e => pathKey(e.path)));
-  const byId = new Map<string, ExistingNote & { storedHash?: string }>();
+  const byId = new Map<string, ExistingNote & { storedHash?: string; sourceHash?: string }>();
   for (const note of existing) {
     const fm = parseFrontmatter(note.content);
     const id = fm?.data.chatgpt_id;
     if (typeof id === 'string' && id) {
       const stored = fm?.data[HASH_KEY];
-      byId.set(id, { ...note, storedHash: typeof stored === 'string' ? stored : undefined });
+      const source = fm?.data[SOURCE_HASH_KEY];
+      byId.set(id, {
+        ...note,
+        storedHash: typeof stored === 'string' ? stored : undefined,
+        sourceHash: typeof source === 'string' ? source : undefined,
+      });
     }
   }
 
@@ -80,7 +86,8 @@ export function planImport(existing: ExistingNote[], incoming: RenderedNote[]): 
     if (!ex.storedHash || ex.storedHash !== contentHash(ex.content)) {
       return { action: 'skip', reason: 'modified-locally', ...base };
     }
-    if (ex.storedHash === note.hash) return { action: 'skip', reason: 'unchanged', ...base };
+    // The source hash survives the writer renaming an embed; notes from before it existed fall back to the import hash.
+    if ((ex.sourceHash ?? ex.storedHash) === note.hash) return { action: 'skip', reason: 'unchanged', ...base };
     return { action: 'update', ...base };
   });
 }

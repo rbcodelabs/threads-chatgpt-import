@@ -224,6 +224,31 @@ describe('executePlan: attachments', () => {
     expect(planImport(existingOf(vault), [note])[0].reason).not.toBe('modified-locally');
   });
 
+  it('B2: re-importing the same export after an attachment was renamed reports unchanged, not update', async () => {
+    const vault = new FakeVault();
+    vault.seedBinary('ChatGPT/attachments/file-ABC123-pic.png', new Uint8Array([1, 2, 3]));
+    const note = await withImage('img-1', 'One');
+    const zip = archive({ 'file-ABC123-pic.png': png });
+    await executePlan(vault, planImport(existingOf(vault), [note]), zip);
+    expect(vault.text(note.path)).toContain('![[attachments/file-ABC123-pic-2.png]]');
+
+    const again = planImport(existingOf(vault), [note]);
+    expect(again[0]).toMatchObject({ action: 'skip', reason: 'unchanged' });
+    vault.log.length = 0;
+    const res = await executePlan(vault, again, zip);
+    expect(res).toMatchObject({ unchanged: 1, updated: 0, created: 0 });
+    expect(vault.log).toEqual([]);
+  });
+
+  it('B2: a renamed-attachment note the user then edited is still never overwritten', async () => {
+    const vault = new FakeVault();
+    vault.seedBinary('ChatGPT/attachments/file-ABC123-pic.png', new Uint8Array([1, 2, 3]));
+    const note = await withImage('img-1', 'One');
+    await executePlan(vault, planImport(existingOf(vault), [note]), archive({ 'file-ABC123-pic.png': png }));
+    vault.seedText(note.path, vault.text(note.path) + '\nmy edit');
+    expect(planImport(existingOf(vault), [note])[0]).toMatchObject({ action: 'skip', reason: 'modified-locally' });
+  });
+
   it('a case-variant attachment name counts as occupied', async () => {
     const vault = new FakeVault(true);
     vault.seedBinary('ChatGPT/attachments/FILE-abc123-PIC.png', new Uint8Array([9]));

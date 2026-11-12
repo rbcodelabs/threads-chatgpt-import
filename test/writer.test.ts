@@ -168,6 +168,90 @@ describe('executePlan: notes', () => {
   });
 });
 
+describe('executePlan: create failure modes (A6)', () => {
+  const png = Buffer.from('PNG-A');
+  const noteWithImage = async (id = 'img-1') => {
+    const raw = await fixtureJson('image.json');
+    raw.id = id;
+    return render(raw, { resolveAsset: p => (p.endsWith('file-ABC123') ? 'file-ABC123-pic.png' : undefined) });
+  };
+
+  it('a create that throws after the exact content landed is a success, not a (shortid) duplicate', async () => {
+    const vault = new FakeVault();
+    const note = render(await plain());
+    vault.failAfterCreate = p => (p === note.path ? new Error('EIO after write') : undefined);
+    const res = await executePlan(vault, planImport([], [note]), noArchive);
+    expect(res).toMatchObject({ created: 1, failed: 0 });
+    expect(vault.files()).toEqual([note.path]);
+    expect(vault.text(note.path)).toBe(note.content);
+  });
+
+  it('a create that throws while a different file now holds the name still moves to a variant', async () => {
+    const vault = new FakeVault();
+    const note = render(await plain());
+    vault.failCreate = p => {
+      if (p !== note.path) return undefined;
+      vault.seedText(p, 'someone else wrote this first'); // appeared between check and create
+      return new Error('raced');
+    };
+    const res = await executePlan(vault, planImport([], [note]), noArchive);
+    expect(res).toMatchObject({ created: 1, failed: 0 });
+    expect(vault.text(note.path)).toBe('someone else wrote this first');
+    expect(vault.files().filter(f => f !== note.path)).toHaveLength(1);
+  });
+
+  it('the same holds for attachments: exact bytes already on disk are reused, not copied to -2', async () => {
+    const vault = new FakeVault();
+    const note = await noteWithImage();
+    vault.failAfterCreate = p => (p.endsWith('.png') ? new Error('EIO after write') : undefined);
+    const res = await executePlan(vault, planImport([], [note]), archive({ 'file-ABC123-pic.png': png }));
+    expect(res).toMatchObject({ created: 1, failed: 0 });
+    expect(vault.files().filter(f => f.endsWith('.png'))).toEqual(['ChatGPT/attachments/file-ABC123-pic.png']);
+  });
+
+  it('when the note cannot be created, the attachments it copied are listed as orphans in the warnings', async () => {
+    const vault = new FakeVault();
+    const note = await noteWithImage();
+    vault.failCreate = p => (p.endsWith('.md') ? new Error('disk full') : undefined);
+    const res = await executePlan(vault, planImport([], [note]), archive({ 'file-ABC123-pic.png': png }));
+    expect(res).toMatchObject({ created: 0, failed: 1 });
+    expect(res.warnings).toEqual([expect.stringContaining('ChatGPT/attachments/file-ABC123-pic.png')]);
+    expect(res.warnings[0]).toContain(note.path);
+    expect(vault.files()).toContain('ChatGPT/attachments/file-ABC123-pic.png'); // never deleted behind the user's back
+  });
+
+  it('reused attachments are not reported as orphans', async () => {
+    const vault = new FakeVault();
+    vault.seedBinary('ChatGPT/attachments/file-ABC123-pic.png', png);
+    const note = await noteWithImage();
+    vault.failCreate = p => (p.endsWith('.md') ? new Error('disk full') : undefined);
+    const res = await executePlan(vault, planImport(existingOf(vault), [note]), archive({ 'file-ABC123-pic.png': png }));
+    expect(res.failed).toBe(1);
+    expect(res.warnings).toEqual([]);
+  });
+});
+
+describe('executePlan: Geode-style vault (exact-case create over a case-insensitive disk)', () => {
+  it('never replaces a case-variant file the snapshot knew about', async () => {
+    const vault = new FakeVault(true, { geodeStyle: true });
+    const note = render(await plain());
+    vault.seedText('chatgpt/2023-11-14 planning a garden.md', 'user note');
+    vault.seedBinary('ChatGPT/attachments/FILE-abc123-PIC.png', new Uint8Array([9]));
+    const res = await executePlan(vault, planImport(existingOf(vault), [note]), noArchive);
+    expect(res).toMatchObject({ created: 1, failed: 0 });
+    expect(vault.log.filter(l => l.startsWith('OVERWROTE'))).toEqual([]);
+    expect(vault.text('chatgpt/2023-11-14 planning a garden.md')).toBe('user note');
+  });
+
+  it('the fake really models the hazard: a raw case-variant create replaces the file', async () => {
+    const vault = new FakeVault(true, { geodeStyle: true });
+    vault.seedText('A/B.md', 'mine');
+    expect(await vault.exists('a/b.md')).toBe(false); // exact-case index
+    await vault.createText('a/b.md', 'theirs');
+    expect(vault.log).toContain('OVERWROTE A/B.md');
+  });
+});
+
 describe('executePlan: attachments', () => {
   const png = Buffer.from('PNG-A');
   const withImage = async (id: string, title: string) => {

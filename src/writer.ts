@@ -153,8 +153,18 @@ class Writer {
     }
   }
 
-  /** Creates `path` or, if the name is (or becomes) taken, the first free variant. Returns the final path. */
-  private async createExclusive(path: string, write: (p: string) => Promise<void>, variant: (n: number) => string): Promise<string> {
+  /**
+   * Creates `path` or, if the name is (or becomes) taken, the first free variant. Returns the final path.
+   * `isOurs` says whether what is now at a path is exactly what `write` was writing: a create that
+   * throws after the content landed (a flaky adapter, a watcher racing the write) is then a success,
+   * not a reason to leave a second copy under a variant name.
+   */
+  private async createExclusive(
+    path: string,
+    write: (p: string) => Promise<void>,
+    variant: (n: number) => string,
+    isOurs: (p: string) => Promise<boolean>,
+  ): Promise<string> {
     let candidate = path;
     for (let n = 1; n <= MAX_NAME_ATTEMPTS; n++, candidate = variant(n)) {
       candidate = this.index.canonicalDir(dirname(candidate)) + (dirname(candidate) ? '/' : '') + basename(candidate);
@@ -163,8 +173,8 @@ class Writer {
       try {
         await write(candidate);
       } catch (e) {
-        if (await this.vault.exists(candidate)) continue; // appeared between check and create
-        throw e;
+        if (!(await this.vault.exists(candidate))) throw e;
+        if (!(await isOurs(candidate))) continue; // someone else's file appeared between check and create
       }
       this.index.add(candidate);
       return candidate;
@@ -172,9 +182,9 @@ class Writer {
     throw new Error(`could not find a free name for ${path}`);
   }
 
-  private async placeAttachment(ref: AttachmentRef): Promise<string> {
+  private async placeAttachment(ref: AttachmentRef): Promise<{ path: string; wrote: boolean }> {
     const known = this.placed.get(ref.sourceName);
-    if (known) { this.result.attachmentsReused++; return known; }
+    if (known) { this.result.attachmentsReused++; return { path: known, wrote: false }; }
 
     const data = await this.archive.readEntry(ref.sourceName, { maxBytes: this.maxAttachmentBytes });
     const wanted = sha256(data);
@@ -187,7 +197,7 @@ class Writer {
         if (bytes && sha256(bytes) === wanted) {
           this.placed.set(ref.sourceName, there);
           this.result.attachmentsReused++;
-          return there;
+          return { path: there, wrote: false };
         }
         continue; // different content (or a folder): never overwrite, try the next name
       }
@@ -195,40 +205,60 @@ class Writer {
       try {
         await this.vault.createBinary(candidate, data, undefined);
       } catch (e) {
-        if (await this.vault.exists(candidate)) continue;
-        throw e;
+        if (!(await this.vault.exists(candidate))) throw e;
+        const landed = await this.vault.readBinary(candidate);
+        if (!landed || sha256(landed) !== wanted) continue; // not ours: try the next name
+        // The create threw but our exact bytes are there: count it as written.
       }
       this.index.add(candidate);
       this.placed.set(ref.sourceName, candidate);
       this.result.attachmentsWritten++;
-      return candidate;
+      return { path: candidate, wrote: true };
     }
     throw new Error(`could not find a free name for ${ref.targetPath}`);
   }
 
   /** Copies the note's attachments, returning the content with embeds pointing at where they landed. */
-  private async withAttachments(item: PlanItem): Promise<{ content: string }> {
+  private async withAttachments(item: PlanItem): Promise<{ content: string; written: string[] }> {
     const renames = new Map<string, string>();
+    const written: string[] = [];
     for (const ref of item.note.attachments) {
       try {
-        const finalPath = await this.placeAttachment(ref);
-        if (basename(finalPath) !== basename(ref.targetPath)) renames.set(basename(ref.targetPath), basename(finalPath));
+        const placed = await this.placeAttachment(ref);
+        if (placed.wrote) written.push(placed.path);
+        if (basename(placed.path) !== basename(ref.targetPath)) renames.set(basename(ref.targetPath), basename(placed.path));
       } catch (e) {
         this.result.attachmentsFailed++;
         this.result.warnings.push(`${item.path}: attachment ${ref.sourceName}: ${message(e)}`);
       }
     }
-    return { content: rewriteEmbeds(item.note.content, renames) };
+    return { content: rewriteEmbeds(item.note.content, renames), written };
   }
 
+  /**
+   * Attachments are written BEFORE the note, on purpose: the note's embeds must name the files as
+   * they finally landed (a taken name gets a suffix), and its stored hash covers those embeds. The
+   * alternative, note first, would leave a dangling note if the run dies midway and need a second
+   * write that changes the note after it was hashed. The price is that a note whose create then
+   * fails leaves its attachments behind. They are harmless (a later import reuses identical files),
+   * are never deleted behind the user's back, and are named in the warnings.
+   */
   private async create(item: PlanItem): Promise<void> {
-    const { content } = await this.withAttachments(item);
+    const { content, written } = await this.withAttachments(item);
     const mtime = mtimeOf(content);
-    await this.createExclusive(
-      item.path,
-      p => this.vault.createText(p, content, mtime),
-      n => idVariant(item.path, item.chatgptId, n),
-    );
+    try {
+      await this.createExclusive(
+        item.path,
+        p => this.vault.createText(p, content, mtime),
+        n => idVariant(item.path, item.chatgptId, n),
+        async p => (await this.vault.readText(p)) === content,
+      );
+    } catch (e) {
+      if (written.length > 0) {
+        this.result.warnings.push(`${item.path}: the note was not created, so ${written.length === 1 ? 'this attachment is' : 'these attachments are'} unused: ${written.join(', ')}`);
+      }
+      throw e;
+    }
     this.result.created++;
   }
 

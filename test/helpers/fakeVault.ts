@@ -5,6 +5,10 @@ interface Entry { kind: 'file' | 'folder'; text?: string; bytes?: Uint8Array; mt
 /**
  * In-memory vault. `caseInsensitive` mimics macOS/Windows volumes: a create fails if any
  * case-variant of the path exists, exactly like the real adapter would.
+ *
+ * `geodeStyle` mimics Geode's `Vault.create`: it refuses only an exact-case match in its own
+ * index, then writes to a case-insensitive disk, which silently replaces a case-variant file.
+ * `exists()` is exact-case too. Such an overwrite is logged as `OVERWROTE <existing>`.
  */
 export class FakeVault implements VaultPort {
   readonly entries = new Map<string, Entry>();
@@ -12,12 +16,36 @@ export class FakeVault implements VaultPort {
   /** Hooks let a test mutate the vault at the exact moment the writer touches it. */
   beforeRead?: (path: string) => void;
   failCreate?: (path: string) => Error | undefined;
+  /** Writes the file, then throws: the create "failed" but the content is on disk. */
+  failAfterCreate?: (path: string) => Error | undefined;
 
-  constructor(private readonly caseInsensitive = true) {}
+  constructor(private readonly caseInsensitive = true, private readonly opts: { geodeStyle?: boolean } = {}) {}
+
+  private variantOf(path: string): string | undefined {
+    const want = path.toLowerCase();
+    return [...this.entries.keys()].find(k => k !== path && k.toLowerCase() === want);
+  }
+
+  /** Common create path for text and binary. */
+  private put(path: string, entry: Entry, kind: string): void {
+    const err = this.failCreate?.(path);
+    if (err) throw err;
+    if (this.opts.geodeStyle) {
+      if (this.entries.has(path)) throw new Error(`File already exists: ${path}`);
+      const clobbered = this.variantOf(path);
+      if (clobbered) { this.log.push(`OVERWROTE ${clobbered}`); this.entries.delete(clobbered); }
+    } else if (this.find(path)) {
+      throw new Error(`File already exists: ${path}`);
+    }
+    this.log.push(`${kind} ${path}`);
+    this.entries.set(path, entry);
+    const late = this.failAfterCreate?.(path);
+    if (late) throw late;
+  }
 
   private find(path: string): string | undefined {
     if (this.entries.has(path)) return path;
-    if (!this.caseInsensitive) return undefined;
+    if (!this.caseInsensitive || this.opts.geodeStyle) return undefined;
     const want = path.toLowerCase();
     return [...this.entries.keys()].find(k => k.toLowerCase() === want);
   }
@@ -55,11 +83,7 @@ export class FakeVault implements VaultPort {
   }
 
   async createText(path: string, content: string, mtime?: number): Promise<void> {
-    const err = this.failCreate?.(path);
-    if (err) throw err;
-    if (this.find(path)) throw new Error(`File already exists: ${path}`);
-    this.log.push(`create ${path}`);
-    this.entries.set(path, { kind: 'file', text: content, mtime });
+    this.put(path, { kind: 'file', text: content, mtime }, 'create');
   }
   async modifyText(path: string, content: string, mtime?: number): Promise<void> {
     const e = this.entries.get(path);
@@ -68,9 +92,7 @@ export class FakeVault implements VaultPort {
     this.entries.set(path, { kind: 'file', text: content, mtime });
   }
   async createBinary(path: string, data: Uint8Array, mtime?: number): Promise<void> {
-    if (this.find(path)) throw new Error(`File already exists: ${path}`);
-    this.log.push(`createBinary ${path}`);
-    this.entries.set(path, { kind: 'file', bytes: data, mtime });
+    this.put(path, { kind: 'file', bytes: data, mtime }, 'createBinary');
   }
   async createFolder(path: string): Promise<void> {
     if (this.find(path)) throw new Error(`Folder already exists: ${path}`);
